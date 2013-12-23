@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<product productid="duosecurity" active="1">
+	<title>Duo Security</title>
+	<description>Integrates the Duo Security service for user authentication.</description>
+	<version>3.0</version>
+	<url>http://www.mdvhosting.com/vbulletin/duo_security/</url>
+	<versioncheckurl>http://www.mdvhosting.com/vbulletin/duo_security/vbulletin_version.php</versioncheckurl>
+	<dependencies>
+		<dependency dependencytype="vbulletin" minversion="3.4" maxversion="5.0" />
+	</dependencies>
+	<codes>
+	</codes>
+	<templates>
+	</templates>
+	<plugins>
+		<plugin active="1" executionorder="5">
+			<title>Setup</title>
+			<hookname>global_start</hookname>
+			<phpcode><![CDATA[// Note: You should not edit Duo plugins directly! To configure Duo, please use the Duo Security section under vBulletin Options.
+
+$duo_security['groups'] = explode(",", $vbulletin->options['duosecurity_groups']);
+$duo_security['users'] = explode(",", $vbulletin->options['duosecurity_users']);]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Duo Flow Redirect</title>
+			<hookname>login_failure</hookname>
+			<phpcode><![CDATA[// Note: You should not edit Duo plugins directly! To configure Duo, please use the Duo Security section under vBulletin Options.
+
+global $duo_security;
+
+// Check if the user has been flagged as requiring Duo authentication
+if($duo_security['auth_flag'])
+{
+	// Make sure the web path has a trailing slash
+	$vbulletin->options['duosecurity_web_path'] .= (substr($vbulletin->options['duosecurity_web_path'], -1) == "/"?"":"/");
+	
+	// This user needs to proceed to duo, so we're going to include the Duo REST script
+	include($vbulletin->options['duosecurity_web_path'] . "duo_rest.php");
+	
+	// To avoid the login attempt as being considered a failure, we need to kill script execution
+	die();
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Login Flow Interrupt</title>
+			<hookname>login_verify_success</hookname>
+			<phpcode><![CDATA[// Note: You should not edit Duo plugins directly! To configure Duo, please use the Duo Security section under vBulletin Options.
+
+global $duo_security;
+
+// Initialize the Duo flag
+$duo_flag = false;
+
+// Check if Duo integration is enabled
+if($vbulletin->options['duosecurity_enabled'])
+{
+	// Integration is enabled, now let's see if this user needs to use Duo
+	$duo_flag = ($duo_flag || in_array($vbulletin->userinfo['userid'], $duo_security['users']));
+	$duo_flag = ($duo_flag || in_array($vbulletin->userinfo['usergroupid'], $duo_security['groups']));
+	
+	// See if the user has any additional group memberships
+	if(strlen($vbulletin->userinfo['membergroupids']) > 0)
+	{
+		// Membergroupids in vBulletin are comma delimited so we need to expand and process them
+		$expanded_member_groups = explode(",", $vbulletin->userinfo['membergroupids']);
+		
+		foreach($expanded_member_groups as $a_group)
+		{
+			$duo_flag = ($duo_flag || in_array($a_group, $duo_security['groups']));
+		}
+	}
+	
+	// Is this user require to proceed to Duo?
+	if($duo_flag)
+	{
+		// They are a Duo user, so we're going to check for a Duo key
+		if(isset($_POST['duo_key']))
+		{
+			// A Duo key was provided, so let's crypt the key information
+			$duo_key = crypt($vbulletin->userinfo['userid'], '$5$' . md5($vbulletin->options['duosecurity_skey']));
+			
+			// Does the key we generated match the POST'd key?
+			if($duo_key != base64_decode($_POST['duo_key']))
+			{
+				// They don't match so Duo failed, fail the login attempt
+				// Note: We do NOT set the Duo flag here! If we did, it would cause the Duo interface
+				// to display again and the user's login attempt would never actually fail.
+				$return_value = false;
+			}
+		}
+		else
+		{
+			// Fail the login attempt and set the Duo flag. We set the Duo flag to cause the
+			// Duo interface to be displayed later in the "login_failure" hook.
+			$return_value = false;
+			$duo_security['auth_flag'] = true;
+		}
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Handle User Location</title>
+			<hookname>online_location_process</hookname>
+			<phpcode><![CDATA[// Note: You should not edit Duo plugins directly! To configure Duo, please use the Duo Security section under vBulletin Options.
+
+// vBulletin shows user locations on their profile pages. To prevent vBulletin from showing Duo as "duo_rest.php" or some other nonsense, we need to define Duo as a valid location.
+
+if($filename == "duo_rest.php")
+{
+	$userinfo['activity'] = 'duosecurity';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Handle User Location</title>
+			<hookname>online_location_unknown</hookname>
+			<phpcode><![CDATA[// Note: You should not edit Duo plugins directly! To configure Duo, please use the Duo Security section under vBulletin Options.
+
+// vBulletin shows user locations on their profile pages. To prevent vBulletin from showing Duo as "duo_rest.php" or some other nonsense, we need to define Duo as a valid location.
+
+switch ($userinfo['activity'])
+{
+    case 'duosecurity':
+        $userinfo['where'] = '';
+        $userinfo['action'] = "Duo Security";
+        $handled = true;
+    break;
+}]]></phpcode>
+		</plugin>
+	</plugins>
+	<phrases>
+		<phrasetype name="GLOBAL" fieldname="global">
+			<phrase name="duosecurity_auth_begin" date="1359907160" username="Matthew" version="1.0"><![CDATA[Beginning authentication...]]></phrase>
+			<phrase name="duosecurity_auth_prompt" date="1359907151" username="Matthew" version="1.0"><![CDATA[How would you like to authenticate?]]></phrase>
+			<phrase name="duosecurity_denied" date="1359907244" username="Matthew" version="1.0"><![CDATA[Login request denied.]]></phrase>
+			<phrase name="duosecurity_enroll_prompt_x" date="1359996986" username="Matt" version="3.0"><![CDATA[Your account is not enrolled for Duo yet!<br /><br /><a href="{1}" target="_blank">Click here</a> to continue to Duo enrollment.<br /><br />After enrollment, <a href="javascript:fetch_methods()">click here</a> to continue.]]></phrase>
+			<phrase name="duosecurity_error_curl_x" date="1359908016" username="Matthew" version="1.0"><![CDATA[Could not contact Duo! {1}]]></phrase>
+			<phrase name="duosecurity_error_failed" date="1359907130" username="Matthew" version="1.0"><![CDATA[Authentication failed!]]></phrase>
+			<phrase name="duosecurity_error_generic" date="1359907088" username="Matthew" version="1.0"><![CDATA[There was an error processing your request!]]></phrase>
+			<phrase name="duosecurity_error_generic_x" date="1359908099" username="Matthew" version="1.0"><![CDATA[There was an error processing your request! {1}]]></phrase>
+			<phrase name="duosecurity_error_passcode" date="1359907143" username="Matthew" version="1.0"><![CDATA[You chose to authenticate using a passcode but did not provide one!]]></phrase>
+			<phrase name="duosecurity_error_userid" date="1359907113" username="Matthew" version="1.0"><![CDATA[Sorry, there was a failure getting your user ID.]]></phrase>
+			<phrase name="duosecurity_invalid_txid_userid" date="1359908868" username="Matthew" version="1.0"><![CDATA[Invalid Transaction ID or User ID!]]></phrase>
+			<phrase name="duosecurity_loading" date="1359907220" username="Matthew" version="1.0"><![CDATA[.. Loading Duo ..]]></phrase>
+			<phrase name="duosecurity_next" date="1359908316" username="Matthew" version="1.0"><![CDATA[Next >]]></phrase>
+			<phrase name="duosecurity_not_available" date="1359907228" username="Matthew" version="1.0"><![CDATA[Sorry, Duo authentication is not available for your account.]]></phrase>
+			<phrase name="duosecurity_passcode" date="1359908392" username="Matthew" version="1.0"><![CDATA[Passcode:]]></phrase>
+			<phrase name="duosecurity_passcode_prompt" date="1359907184" username="Matthew" version="1.0"><![CDATA[Already have a passcode? Enter it:]]></phrase>
+			<phrase name="duosecurity_powered_by" date="1359907208" username="Matthew" version="1.0"><![CDATA[Powered by:]]></phrase>
+			<phrase name="duosecurity_success" date="1359907236" username="Matthew" version="1.0"><![CDATA[Success! Logging you in...]]></phrase>
+			<phrase name="duosecurity_success_bypass" date="1359993858" username="Matt" version="3.0"><![CDATA[Success! Logging you in...<br /><br />NOTE: Your account is currently in Duo Bypass mode!]]></phrase>
+			<phrase name="duosecurity_title" date="1359907199" username="Matthew" version="1.0"><![CDATA[Duo Security :: ]]></phrase>
+			<phrase name="duosecurity_try_again" date="1359912171" username="Matthew" version="1.0"><![CDATA[<a href="javascript:fetch_methods()">Click here</a> to try again.]]></phrase>
+		</phrasetype>
+		<phrasetype name="vBulletin Settings" fieldname="vbsettings">
+			<phrase name="setting_duosecurity_api_host_desc" date="1360175308" username="Matt" version="3.0"><![CDATA[This is your Duo Security API hostname. You must obtain this from your Duo Administration panel under the Integrations section.<br /><br />Example: api-xxxxxxxx.duosecurity.com]]></phrase>
+			<phrase name="setting_duosecurity_api_host_title" date="1360175308" username="Matt" version="3.0"><![CDATA[Duo API Hostname]]></phrase>
+			<phrase name="setting_duosecurity_bb_prefix_desc" date="1360173799" username="Matt" version="3.0"><![CDATA[If you want to use multiple forums with a single Duo account, you could end up with duplicate user issues since Duo identifies a vBulletin user by their user ID. This means user 2 from Forum A could be presented Duo options for user 2 from Forum B. To avoid this, we encourage setting a forum prefix. This prefix will be added to user IDs to help keep them unique.<br /><br />Example: bb1_, bb2_]]></phrase>
+			<phrase name="setting_duosecurity_bb_prefix_title" date="1360173799" username="Matt" version="3.0"><![CDATA[Forum Prefix]]></phrase>
+			<phrase name="setting_duosecurity_enabled_desc" date="1359993574" username="Matt" version="3.0"><![CDATA[Setting this to "no" will disable Duo Security and your forum's ability to use two-factor authentication.  If Duo Security is disabled, your users will be able to log in normally using their username and password.  If Duo Security is enabled, your users will need to go through the two-factor authentication process (as configured below).]]></phrase>
+			<phrase name="setting_duosecurity_enabled_title" date="1359993574" username="Matt" version="3.0"><![CDATA[Enable Duo Security]]></phrase>
+			<phrase name="setting_duosecurity_groups_desc" date="1360166281" username="Matt" version="3.0"><![CDATA[Usergroups contained in this list will be required to use Duo Security. This field should contain a comma separated list of usergroup IDs.<br /><br />Example: 6,7]]></phrase>
+			<phrase name="setting_duosecurity_groups_title" date="1360166281" username="Matt" version="3.0"><![CDATA[Duo Enabled Groups]]></phrase>
+			<phrase name="setting_duosecurity_ikey_desc" date="1359996346" username="Matt" version="3.0"><![CDATA[This is your Duo Security integration key.  You must obtain this from your Duo Administration panel under the Integrations section.]]></phrase>
+			<phrase name="setting_duosecurity_ikey_title" date="1359996346" username="Matt" version="3.0"><![CDATA[Duo Integration Key]]></phrase>
+			<phrase name="setting_duosecurity_image_path_desc" date="1360165013" username="Matt" version="3.0"><![CDATA[This is the path to the directory which contains Duo's image files. You must use a trailing slash after the directory name!<br /><br />Example: images/duo/<br /><br />Note: If you host your images on a different server, you can enter a URL path such as: http://images.yoursite.com/duo/]]></phrase>
+			<phrase name="setting_duosecurity_image_path_title" date="1360165013" username="Matt" version="3.0"><![CDATA[Duo Image Path]]></phrase>
+			<phrase name="setting_duosecurity_showpoweredby_desc" date="1359996372" username="Matt" version="3.0"><![CDATA[Show the "Powered by Duo" text/logo on the Duo interface?]]></phrase>
+			<phrase name="setting_duosecurity_showpoweredby_title" date="1359996372" username="Matt" version="3.0"><![CDATA[Powered by Duo]]></phrase>
+			<phrase name="setting_duosecurity_skey_desc" date="1360165098" username="Matt" version="3.0"><![CDATA[This is your Duo Security secret key. You must obtain this from your Duo Administration panel under the Integrations section.<br /><br />Note: This key is very important and must be kept secret! If the key is exposed, the integrity of your Duo integration could be compromised.]]></phrase>
+			<phrase name="setting_duosecurity_skey_title" date="1360165098" username="Matt" version="3.0"><![CDATA[Duo Secret Key]]></phrase>
+			<phrase name="setting_duosecurity_users_desc" date="1360166268" username="Matt" version="3.0"><![CDATA[Users contained in this list will be required to use Duo Security regardless of what user groups they are in.  This field should contain a comma separated list of user IDs.<br /><br />Example: 1,53,23]]></phrase>
+			<phrase name="setting_duosecurity_users_title" date="1360166268" username="Matt" version="3.0"><![CDATA[Duo Enabled Users]]></phrase>
+			<phrase name="setting_duosecurity_web_path_desc" date="1360164959" username="Matt" version="3.0"><![CDATA[This is the path to your Duo API files relative to the forum's root.<br /><br />Example: duo/]]></phrase>
+			<phrase name="setting_duosecurity_web_path_title" date="1360164959" username="Matt" version="3.0"><![CDATA[Duo Web Include Path]]></phrase>
+			<phrase name="settinggroup_duosecurity" date="1325267764" username="Matthew" version="1.0"><![CDATA[Duo Security]]></phrase>
+		</phrasetype>
+	</phrases>
+	<options>
+		<settinggroup name="duosecurity" displayorder="600">
+			<setting varname="duosecurity_enabled" displayorder="10">
+				<datatype>boolean</datatype>
+				<optioncode>yesno</optioncode>
+				<defaultvalue>0</defaultvalue>
+			</setting>
+			<setting varname="duosecurity_web_path" displayorder="15">
+				<datatype>free</datatype>
+				<defaultvalue>duo/</defaultvalue>
+			</setting>
+			<setting varname="duosecurity_image_path" displayorder="20">
+				<datatype>free</datatype>
+				<defaultvalue>duo/images/</defaultvalue>
+			</setting>
+			<setting varname="duosecurity_ikey" displayorder="25">
+				<datatype>free</datatype>
+			</setting>
+			<setting varname="duosecurity_skey" displayorder="30">
+				<datatype>free</datatype>
+			</setting>
+			<setting varname="duosecurity_api_host" displayorder="35">
+				<datatype>free</datatype>
+			</setting>
+			<setting varname="duosecurity_bb_prefix" displayorder="40">
+				<datatype>free</datatype>
+				<defaultvalue>bb1_</defaultvalue>
+			</setting>
+			<setting varname="duosecurity_users" displayorder="45">
+				<datatype>free</datatype>
+			</setting>
+			<setting varname="duosecurity_groups" displayorder="50">
+				<datatype>free</datatype>
+			</setting>
+			<setting varname="duosecurity_showpoweredby" displayorder="55">
+				<datatype>boolean</datatype>
+				<optioncode>yesno</optioncode>
+				<defaultvalue>1</defaultvalue>
+			</setting>
+		</settinggroup>
+	</options>
+	<helptopics>
+	</helptopics>
+	<cronentries>
+	</cronentries>
+	<faqentries>
+	</faqentries>
+</product>
