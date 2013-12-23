@@ -1,0 +1,69 @@
+/*******************************************************************/
+/*                        Duo for vBulletin                        */
+/*******************************************************************/
+
+/* This for the main page body. */
+BODY {
+	background: #000000;
+	color: #B8BED2;
+	/* If you don't want a background image, remove the four lines below: */
+	background-image: url('images/bottom_left_background.jpg');
+	background-repeat: no-repeat;
+	background-position: left bottom;
+	background-attachment: fixed;
+	font-size: 12px;
+	font-family: Verdana;
+}
+
+a, a:hover, a:visited {
+	color: #B8BED2;
+}
+
+/* This is for the div used to align the page elements correctly. */
+#body_div {
+	width: 730px;
+	margin: 0 auto;
+	text-align: center;
+}
+
+/* This is for the table which contains the Duo content. */
+table#body_table {
+	width: 730px;
+	height: 400px;
+	color: #B8BED2;
+}
+
+/* This is for the left side of the table where the images are. */
+.body_table_left {
+	width: 280px;
+	border-right: 3px solid #284059;
+	text-align: center;
+}
+
+/* This is for the right side of the Duo table where the method */
+/* list and messages from Duo appear.                           */
+.body_table_right {
+	width: 450px;
+	min-width: 450px;
+	padding: 0px 0px 0px 10px;
+}
+
+/* This is for the individual rows displayed for each Duo method. */
+.duo_method_row {
+	width: 250px;
+	height: 41px;
+	padding-top: 3px;
+	padding-left: 8px;
+	margin-bottom: 3px;
+	background-image: url('images/method_button.png');
+	background-repeat: no-repeat;
+	text-align: left;
+	font-size: 16px;
+	color: #FFFFFF;
+	cursor: pointer;
+}
+
+/* This is for the small second line of text below each method. */
+.duo_method_row_small {
+	font-size: 10px;
+}
